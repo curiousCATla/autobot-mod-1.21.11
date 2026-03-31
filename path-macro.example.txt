@@ -1,0 +1,10 @@
+# Trainer Bot path macro example
+# MOVE <UP|DOWN|LEFT|RIGHT> <distanceBlocks> <true|false>
+# CLIMB <UP|DOWN|LEFT|RIGHT> <heightBlocks>
+# WAIT <ticks>
+# FACE <NORTH|SOUTH|EAST|WEST>
+FACE NORTH
+MOVE UP 3 false
+WAIT 20
+CLIMB UP 1
+MOVE RIGHT 2 false
