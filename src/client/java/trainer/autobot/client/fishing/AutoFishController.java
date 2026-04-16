@@ -6,6 +6,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.projectile.FishingHook;
 import net.minecraft.world.item.Items;
+import trainer.autobot.client.movement.MouseAction;
 import trainer.autobot.client.movement.MovementController;
 import trainer.autobot.client.movement.MovementDirection;
 
@@ -101,7 +102,7 @@ public final class AutoFishController {
 		}
 
 		MovementDirection direction = moveRightNext ? MovementDirection.RIGHT : MovementDirection.LEFT;
-		MovementController.movePlayer(client, direction, SIDE_STEP_DISTANCE_BLOCKS, false);
+		MovementController.movePlayer(client, direction, SIDE_STEP_DISTANCE_BLOCKS, MouseAction.NONE);
 		moveRightNext = !moveRightNext;
 	}
 

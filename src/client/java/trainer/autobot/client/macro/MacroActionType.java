@@ -4,5 +4,7 @@ public enum MacroActionType {
 	MOVE,
 	CLIMB,
 	WAIT,
-	FACE
+	FACE,
+	PITCH,
+	LOOP
 }

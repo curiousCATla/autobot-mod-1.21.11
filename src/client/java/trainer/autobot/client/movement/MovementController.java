@@ -3,6 +3,10 @@ package trainer.autobot.client.movement;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
 public final class MovementController {
@@ -12,7 +16,7 @@ public final class MovementController {
 	private static final double STUCK_MOVEMENT_EPSILON = 0.02;
 
 	private static boolean movementActive = false;
-	private static boolean movementHoldAttack = false;
+	private static MouseAction activeMouseAction = MouseAction.NONE;
 	private static double movementDistanceTravelled = 0.0;
 	private static Vec3 movementDirectionVector = Vec3.ZERO;
 	private static Vec3 lastMovementPosition = Vec3.ZERO;
@@ -41,13 +45,13 @@ public final class MovementController {
 		updateControlledMovement(client);
 	}
 
-	public static void movePlayer(Minecraft client, MovementDirection direction, double distanceBlocks, boolean holdLeftMouseButton) {
+	public static void movePlayer(Minecraft client, MovementDirection direction, double distanceBlocks, MouseAction mouseAction) {
 		LocalPlayer player = client.player;
 		if (player == null || distanceBlocks <= 0.0) {
 			return;
 		}
 
-		movePlayer(client, player, direction, distanceBlocks, holdLeftMouseButton);
+		movePlayer(client, player, direction, distanceBlocks, mouseAction);
 	}
 
 	public static void climbPlayer(Minecraft client, MovementDirection direction, int heightBlocks) {
@@ -67,7 +71,7 @@ public final class MovementController {
 
 	public static void stopMovement(Minecraft client) {
 		movementActive = false;
-		movementHoldAttack = false;
+		activeMouseAction = MouseAction.NONE;
 		movementDistanceTravelled = 0.0;
 		movementDirectionVector = Vec3.ZERO;
 		lastMovementPosition = Vec3.ZERO;
@@ -95,7 +99,7 @@ public final class MovementController {
 		return movementActive || climbActive;
 	}
 
-	private static void movePlayer(Minecraft client, LocalPlayer player, MovementDirection direction, double distanceBlocks, boolean holdLeftMouseButton) {
+	private static void movePlayer(Minecraft client, LocalPlayer player, MovementDirection direction, double distanceBlocks, MouseAction mouseAction) {
 		stopClimbing(client);
 
 		Vec3 movementVector = getMovementVector(player, direction);
@@ -106,12 +110,12 @@ public final class MovementController {
 		movementDirectionVector = movementVector;
 		activeMovementDirection = direction;
 		targetMovementDistance = distanceBlocks;
-		movementHoldAttack = holdLeftMouseButton;
+		activeMouseAction = mouseAction;
 		movementActive = true;
 		movementDistanceTravelled = 0.0;
 		lastMovementPosition = player.position();
 		resetStuckTracking(player);
-		applyMovementKeys(client, direction, holdLeftMouseButton);
+		applyMovementKeys(client, direction);
 	}
 
 	private static void updateClimbing(Minecraft client) {
@@ -180,15 +184,15 @@ public final class MovementController {
 			return;
 		}
 
-		applyMovementKeys(client, activeMovementDirection, movementHoldAttack);
+		applyMovementKeys(client, activeMovementDirection);
+		performMouseAction(client, player, activeMouseAction);
 	}
 
-	private static void applyMovementKeys(Minecraft client, MovementDirection direction, boolean holdLeftMouseButton) {
+	private static void applyMovementKeys(Minecraft client, MovementDirection direction) {
 		client.options.keyUp.setDown(direction == MovementDirection.UP);
 		client.options.keyDown.setDown(direction == MovementDirection.DOWN);
 		client.options.keyLeft.setDown(direction == MovementDirection.LEFT);
 		client.options.keyRight.setDown(direction == MovementDirection.RIGHT);
-		client.options.keyAttack.setDown(holdLeftMouseButton);
 	}
 
 	private static void releaseMovementKeys(Minecraft client) {
@@ -196,11 +200,36 @@ public final class MovementController {
 		client.options.keyDown.setDown(false);
 		client.options.keyLeft.setDown(false);
 		client.options.keyRight.setDown(false);
-		client.options.keyAttack.setDown(false);
+	}
+
+	private static void performMouseAction(Minecraft client, LocalPlayer player, MouseAction mouseAction) {
+		if (mouseAction == MouseAction.NONE || client.hitResult == null || client.gameMode == null) {
+			return;
+		}
+
+		if (mouseAction == MouseAction.ATTACK) {
+			if (client.hitResult.getType() == HitResult.Type.BLOCK) {
+				BlockHitResult blockHit = (BlockHitResult) client.hitResult;
+				client.gameMode.continueDestroyBlock(blockHit.getBlockPos(), blockHit.getDirection());
+			} else if (client.hitResult.getType() == HitResult.Type.ENTITY) {
+				EntityHitResult entityHit = (EntityHitResult) client.hitResult;
+				client.gameMode.attack(player, entityHit.getEntity());
+			}
+		} else if (mouseAction == MouseAction.USE) {
+			if (client.hitResult.getType() == HitResult.Type.BLOCK) {
+				BlockHitResult blockHit = (BlockHitResult) client.hitResult;
+				client.gameMode.useItemOn(player, InteractionHand.MAIN_HAND, blockHit);
+			} else if (client.hitResult.getType() == HitResult.Type.ENTITY) {
+				EntityHitResult entityHit = (EntityHitResult) client.hitResult;
+				client.gameMode.interactAt(player, entityHit.getEntity(), entityHit, InteractionHand.MAIN_HAND);
+			} else {
+				client.gameMode.useItem(player, InteractionHand.MAIN_HAND);
+			}
+		}
 	}
 
 	private static void applyClimbKeys(Minecraft client, MovementDirection direction, boolean jump) {
-		applyMovementKeys(client, direction, false);
+		applyMovementKeys(client, direction);
 		client.options.keyJump.setDown(jump);
 	}
 

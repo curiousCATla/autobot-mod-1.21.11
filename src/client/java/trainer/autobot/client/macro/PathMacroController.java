@@ -4,6 +4,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
 import trainer.autobot.TrainerBot;
+import trainer.autobot.client.movement.MouseAction;
 import trainer.autobot.client.movement.MovementController;
 import trainer.autobot.client.movement.MovementDirection;
 import trainer.autobot.client.rotation.RotationController;
@@ -88,10 +89,12 @@ public final class PathMacroController {
 		currentStepIndex++;
 
 		switch (step.actionType()) {
-			case MOVE -> MovementController.movePlayer(client, step.direction(), step.distanceBlocks(), step.holdLeftMouseButton());
+			case MOVE -> MovementController.movePlayer(client, step.direction(), step.distanceBlocks(), step.mouseAction());
 			case CLIMB -> MovementController.climbPlayer(client, step.direction(), step.heightBlocks());
 			case WAIT -> currentWaitTicks = step.waitTicks();
 			case FACE -> RotationController.startFacingDirection(client, step.faceYaw());
+			case PITCH -> RotationController.startFacingPitch(client, step.targetPitch());
+			case LOOP -> currentStepIndex = 0;
 		}
 
 		delayTicks = PATH_MACRO_STEP_DELAY_TICKS;
@@ -184,6 +187,8 @@ public final class PathMacroController {
 				case CLIMB -> parseClimbStep(parts);
 				case WAIT -> parseWaitStep(parts);
 				case FACE -> parseFaceStep(parts);
+				case PITCH -> parsePitchStep(parts);
+				case LOOP -> parseLoopStep(parts);
 			};
 		} catch (RuntimeException exception) {
 			TrainerBot.LOGGER.warn("Skipping invalid path macro line {}: {}", lineNumber, rawLine);
@@ -198,8 +203,8 @@ public final class PathMacroController {
 
 		MovementDirection direction = MovementDirection.valueOf(parts[1].toUpperCase());
 		double distanceBlocks = Double.parseDouble(parts[2]);
-		boolean holdLeftMouseButton = Boolean.parseBoolean(parts[3]);
-		return new MacroStep(MacroActionType.MOVE, direction, distanceBlocks, holdLeftMouseButton, 0, 0, RotationController.NORTH_YAW);
+		MouseAction mouseAction = MouseAction.valueOf(parts[3].toUpperCase());
+		return new MacroStep(MacroActionType.MOVE, direction, distanceBlocks, mouseAction, 0, 0, RotationController.NORTH_YAW, 0.0f);
 	}
 
 	private static MacroStep parseClimbStep(String[] parts) {
@@ -209,7 +214,7 @@ public final class PathMacroController {
 
 		MovementDirection direction = MovementDirection.valueOf(parts[1].toUpperCase());
 		int heightBlocks = Integer.parseInt(parts[2]);
-		return new MacroStep(MacroActionType.CLIMB, direction, 0.0, false, heightBlocks, 0, RotationController.NORTH_YAW);
+		return new MacroStep(MacroActionType.CLIMB, direction, 0.0, MouseAction.NONE, heightBlocks, 0, RotationController.NORTH_YAW, 0.0f);
 	}
 
 	private static MacroStep parseWaitStep(String[] parts) {
@@ -218,7 +223,7 @@ public final class PathMacroController {
 		}
 
 		int waitTicks = Integer.parseInt(parts[1]);
-		return new MacroStep(MacroActionType.WAIT, MovementDirection.UP, 0.0, false, 0, waitTicks, RotationController.NORTH_YAW);
+		return new MacroStep(MacroActionType.WAIT, MovementDirection.UP, 0.0, MouseAction.NONE, 0, waitTicks, RotationController.NORTH_YAW, 0.0f);
 	}
 
 	private static MacroStep parseFaceStep(String[] parts) {
@@ -233,6 +238,23 @@ public final class PathMacroController {
 			case "WEST" -> RotationController.WEST_YAW;
 			default -> throw new IllegalArgumentException("Unknown FACE direction");
 		};
-		return new MacroStep(MacroActionType.FACE, MovementDirection.UP, 0.0, false, 0, 0, faceYaw);
+		return new MacroStep(MacroActionType.FACE, MovementDirection.UP, 0.0, MouseAction.NONE, 0, 0, faceYaw, 0.0f);
 	}
-}
+
+	private static MacroStep parsePitchStep(String[] parts) {
+		if (parts.length != 2) {
+			throw new IllegalArgumentException("PITCH needs 2 values");
+		}
+
+		float targetPitch = Float.parseFloat(parts[1]);
+		return new MacroStep(MacroActionType.PITCH, MovementDirection.UP, 0.0, MouseAction.NONE, 0, 0, RotationController.NORTH_YAW, targetPitch);
+	}
+
+	private static MacroStep parseLoopStep(String[] parts) {
+		if (parts.length != 1) {
+			throw new IllegalArgumentException("LOOP takes no arguments");
+		}
+
+		return new MacroStep(MacroActionType.LOOP, MovementDirection.UP, 0.0, MouseAction.NONE, 0, 0, RotationController.NORTH_YAW, 0.0f);
+	}
+};
