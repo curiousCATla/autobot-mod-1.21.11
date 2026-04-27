@@ -9,14 +9,14 @@ A client-side Fabric mod for Minecraft 1.21.11 that automates player movement, r
 - **Precise Movement Control** — Walk, strafe, and climb by exact block distances with automatic block-centering and stuck recovery
 - **Smooth Rotation** — Instantly snap or smoothly turn to cardinal directions and pitch angles; manual 15° yaw adjustments via keybinds
 - **Auto-Fishing** — Detects fish bites via hook velocity, auto-reels, recasts with randomized delays, and periodically side-steps to simulate natural behavior
-- **Auto Tree Cutting** — Scans a 16-block radius for the nearest tree, navigates to it, and fells every log column by column from the ground up; flight-capable variant ascends and descends dynamically, clearing leaves and logs in its path
+- **Auto Tree Cutting** — Scans a configurable radius (default 16 blocks) for the nearest tree, navigates to it, and fells every log column by column from the ground up; flight-capable variant ascends and descends dynamically, clearing leaves, logs, and vines in its path
 - **Scriptable Path Macros** — Write plain-text macro files to sequence any combination of moves, climbs, waits, rotations, and pitch changes; hot-swap between multiple scripts in-game
-- **In-Game UI** — Paginated GUI screen for browsing, selecting, and refreshing macro configs without leaving the game
+- **In-Game UI** — Unified control panel for toggling auto-fish and auto-tree on/off, adjusting the tree search radius, and browsing/selecting macro scripts — all without leaving the game
 
 ---
 
 ## Architecture
-sti 
+
 All automation subsystems run on the client tick loop (~20 ticks/sec) and are coordinated by `TrainerBotClient`. Each controller is independently stateful, exposing an `isBusy()` guard so the macro engine waits for one action to finish before starting the next.
 
 ```
@@ -36,14 +36,14 @@ TrainerBotClient  (tick loop / keybind dispatch)
 |---|---|---|
 | Client Entry Point | `TrainerBotClient.java` | Registers tick events, wires all controllers |
 | Keybindings | `ModKeybindings.java` | 8 keybinds (rotate, face, fish, macro, UI) |
-| Rotation | `RotationController.java` | 15° instant snaps; 4°/tick smooth yaw & pitch facing |
+| Rotation | `RotationController.java` | 15° instant snaps; 8°/tick smooth yaw & pitch facing |
 | Movement | `MovementController.java` | Walk/strafe/climb with centering, stuck detection & mouse actions |
 | Mouse Action | `MouseAction.java` | Enum for per-move mouse button behavior (NONE / ATTACK / USE) |
 | Fishing | `AutoFishController.java` | Bite detection, recast cooldown, anti-AFK drift |
 | Tree Cutting | `AutoTreeController.java` | Multi-state tree-felling with flight, tunnelling, and column ordering |
 | Macro Engine | `PathMacroController.java` | Parses `.txt` scripts, sequences steps with busy-waiting |
 | Macro Storage | `PathMacroStorage.java` | Reads `config/trainer-bot/*.txt`, tracks selection |
-| Config UI | `PathConfigSelectionScreen.java` | In-game paginated macro picker |
+| Config UI | `PathConfigSelectionScreen.java` | In-game control panel: automation toggles, tree radius input, paginated macro picker |
 
 ---
 
@@ -114,7 +114,7 @@ A **safety loop** in `tick()` lets states that complete instantly (e.g. WALKING_
 
 ### Tree Discovery
 
-**Radius scan** — `findNearestTreeBase()` iterates every (X, Z) offset within a 16-block horizontal circle. For each column it scans upward until it finds the first log with no log directly beneath it — that is the trunk base. The closest such base by horizontal distance becomes the target.
+**Radius scan** — `findNearestTreeBase()` iterates every (X, Z) offset within a configurable horizontal circle (default 16 blocks, adjustable 1–64 via the in-game UI). For each column it scans upward until it finds the first log with no log directly beneath it — that is the trunk base. The closest such base by horizontal distance becomes the target.
 
 **26-connectivity flood-fill** — `findConnectedLogs()` runs a BFS from the trunk base. At each position it checks all **26 neighbors** in the surrounding 3×3×3 cube (not just the 6 cardinal directions). This is necessary because acacia and jungle trees have diagonal branch connections that a 6-connected BFS would miss entirely.
 
@@ -286,6 +286,7 @@ Steps execute sequentially; each step waits for the previous movement or rotatio
 - **Direct game API input** — Mouse actions (attack, use) call `gameMode` methods directly rather than simulating key state, so automation remains fully functional even when the game window is out of focus
 - **Parallel yaw + pitch resolution** — Both axes animate simultaneously inside the same tick loop; `isBusy()` clears only when both finish, so the macro never advances prematurely
 - **File-based macro hot-swap** — Macros reload from disk each time they are activated; no restart required to test script changes
+- **Unified in-game control panel** — The `P` screen consolidates automation toggles (auto-fish, auto-tree), a live tree-radius integer input (clamped 1–64), and the macro file picker into a single screen so all runtime settings are accessible without a restart
 
 ---
 

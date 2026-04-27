@@ -19,7 +19,7 @@ import java.util.*;
 
 public final class AutoTreeController {
 
-	private static final int SEARCH_RADIUS = 16;
+	private static int searchRadius = 16;
 	private static final double STAND_DISTANCE = 1.0;
 	private static final int MAX_GROUND_REACH_HEIGHT = 4;
 	private static final float FLY_HEIGHT_TOLERANCE = 0.3f;
@@ -47,6 +47,18 @@ public final class AutoTreeController {
 	private static int flyingUpStuckTicks = 0;
 
 	private AutoTreeController() {
+	}
+
+	public static boolean isEnabled() {
+		return state != State.IDLE;
+	}
+
+	public static int getSearchRadius() {
+		return searchRadius;
+	}
+
+	public static void setSearchRadius(int radius) {
+		searchRadius = Math.max(1, Math.min(64, radius));
 	}
 
 	public static void toggle(Minecraft client) {
@@ -199,7 +211,7 @@ public final class AutoTreeController {
 
 		if (treeBase == null) {
 			player.displayClientMessage(
-					Component.literal("No trees found within " + SEARCH_RADIUS + " blocks"), true);
+					Component.literal("No trees found within " + searchRadius + " blocks"), true);
 			stop(client);
 			return;
 		}
@@ -427,13 +439,13 @@ public final class AutoTreeController {
 		BlockPos nearest = null;
 		double minHorizDist = Double.MAX_VALUE;
 
-		for (int dx = -SEARCH_RADIUS; dx <= SEARCH_RADIUS; dx++) {
-			for (int dz = -SEARCH_RADIUS; dz <= SEARCH_RADIUS; dz++) {
+		for (int dx = -searchRadius; dx <= searchRadius; dx++) {
+			for (int dz = -searchRadius; dz <= searchRadius; dz++) {
 				double horizDist = Math.sqrt((double) (dx * dx + dz * dz));
-				if (horizDist > SEARCH_RADIUS) continue;
+				if (horizDist > searchRadius) continue;
 
 				// Scan upward in this column to find the lowest log
-				for (int dy = -2; dy <= SEARCH_RADIUS; dy++) {
+				for (int dy = -2; dy <= searchRadius; dy++) {
 					BlockPos pos = playerPos.offset(dx, dy, dz);
 					if (isLogBlock(level.getBlockState(pos))) {
 						// Confirm it is a base log (no log directly below)

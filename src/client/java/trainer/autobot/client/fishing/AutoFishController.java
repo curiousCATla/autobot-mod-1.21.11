@@ -27,6 +27,10 @@ public final class AutoFishController {
 	private AutoFishController() {
 	}
 
+	public static boolean isEnabled() {
+		return enabled;
+	}
+
 	public static void toggle(Minecraft client) {
 		enabled = !enabled;
 		cooldownTicks = 0;
