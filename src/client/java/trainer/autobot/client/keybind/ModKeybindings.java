@@ -50,6 +50,11 @@ public final class ModKeybindings {
 			GLFW.GLFW_KEY_P,
 			KeyMapping.Category.MISC
 	);
+	public static final KeyMapping TOGGLE_AUTO_TREE_KEY = new KeyMapping(
+			"key.trainer-bot.toggle_auto_tree",
+			GLFW.GLFW_KEY_T,
+			KeyMapping.Category.MISC
+	);
 
 	private ModKeybindings() {
 	}
@@ -64,5 +69,6 @@ public final class ModKeybindings {
 		KeyBindingHelper.registerKeyBinding(FACE_WEST_KEY);
 		KeyBindingHelper.registerKeyBinding(TOGGLE_PATH_MACRO_KEY);
 		KeyBindingHelper.registerKeyBinding(OPEN_PATH_CONFIG_SCREEN_KEY);
+		KeyBindingHelper.registerKeyBinding(TOGGLE_AUTO_TREE_KEY);
 	}
 }

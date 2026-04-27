@@ -10,8 +10,8 @@ public final class RotationController {
 	public static final float EAST_YAW = -90.0f;
 	public static final float WEST_YAW = 90.0f;
 	public static final float ROTATION_DEGREES = 15.0f;
-	private static final float TURN_STEP_DEGREES = 4.0f;
-	private static final float PITCH_STEP_DEGREES = 4.0f;
+	private static final float TURN_STEP_DEGREES = 8.0f;
+	private static final float PITCH_STEP_DEGREES = 8.0f;
 
 	private static float targetYaw = NORTH_YAW;
 	private static boolean facingActive = false;

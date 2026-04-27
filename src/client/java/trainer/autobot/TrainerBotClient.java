@@ -8,6 +8,7 @@ import trainer.autobot.client.keybind.ModKeybindings;
 import trainer.autobot.client.macro.PathMacroController;
 import trainer.autobot.client.movement.MovementController;
 import trainer.autobot.client.rotation.RotationController;
+import trainer.autobot.client.tree.AutoTreeController;
 import trainer.autobot.client.ui.PathConfigSelectionScreen;
 
 public class TrainerBotClient implements ClientModInitializer {
@@ -56,9 +57,14 @@ public class TrainerBotClient implements ClientModInitializer {
 			client.setScreen(new PathConfigSelectionScreen(client.screen));
 		}
 
+		while (ModKeybindings.TOGGLE_AUTO_TREE_KEY.consumeClick()) {
+			AutoTreeController.toggle(client);
+		}
+
 		RotationController.tick(client);
 		MovementController.tick(client);
 		PathMacroController.tick(client);
 		AutoFishController.tick(client);
+		AutoTreeController.tick(client);
 	}
 }
