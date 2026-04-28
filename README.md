@@ -114,7 +114,7 @@ A **safety loop** in `tick()` lets states that complete instantly (e.g. WALKING_
 
 ### Tree Discovery
 
-**Radius scan** — `findNearestTreeBase()` iterates every (X, Z) offset within a configurable horizontal circle (default 16 blocks, adjustable 1–64 via the in-game UI). For each column it scans upward until it finds the first log with no log directly beneath it — that is the trunk base. The closest such base by horizontal distance becomes the target.
+**Radius scan** — `findNearestTreeBase()` iterates every (X, Z) offset within a configurable horizontal circle (default 16 blocks, adjustable 1–64 via the in-game UI). For each column it scans upward until it finds the first log with no log directly beneath it — that is the trunk base. The closest such base becomes the target. All distance comparisons are done in **squared-distance space** — no `Math.sqrt` calls are made during the scan — which eliminates up to ~1,000 sqrt operations per SEARCHING tick at the default radius.
 
 **26-connectivity flood-fill** — `findConnectedLogs()` runs a BFS from the trunk base. At each position it checks all **26 neighbors** in the surrounding 3×3×3 cube (not just the 6 cardinal directions). This is necessary because acacia and jungle trees have diagonal branch connections that a 6-connected BFS would miss entirely.
 
@@ -178,8 +178,10 @@ When flight is enabled (`player.getAbilities().mayfly`), the bot activates it pr
 
 | Function | Where used | What it does |
 |---|---|---|
-| `findNearestTreeBase()` | SEARCHING | Grid scan → per-column upward scan to find the lowest trunk log |
-| `findConnectedLogs()` | SEARCHING | 26-neighbor BFS from trunk base; returns logs sorted by column then Y |
+| `findNearestTreeBase()` | SEARCHING | Grid scan → per-column upward scan to find the lowest trunk log; uses squared distances throughout (no sqrt in hot path) |
+| `findConnectedLogs()` | SEARCHING | 26-neighbor BFS from trunk base; returns logs sorted by column then Y; uses a single `LinkedHashSet` as both visited guard and output collection |
+| `blockCenter()` | all rotation & distance helpers | Returns the XYZ centre of a block as a `Vec3` (`pos + 0.5` on each axis) — single source of truth for block-centre offsets |
+| `faceBlockHorizontally()` | FLYING_TO_LOG, REPOSITIONING enter; `tickFlyingToLog()` | Calls `startFacingDirection` + `startFacingPitch(0°)` together; avoids repeating the two-call pattern at every call site |
 | `yawToBlock()` | FACING_TREE, FACING_LOG, FLYING_TO_LOG | `atan2(−dx, dz)` → Minecraft yaw (South = 0°, East = −90°) |
 | `pitchToBlock()` | FACING_LOG | `−atan2(dy, horizDist)` → Minecraft pitch (up = −90°, down = +90°) |
 | `dist3DToBlock()` | BREAKING_LOG | True 3D Euclidean distance from player eye to log centre; drives reach detection |
@@ -207,6 +209,8 @@ The tree cutter was built incrementally, with each test revealing a new edge cas
 **`FLYING_DOWN` freezing with Shift held indefinitely** — `player.onGround()` is unreliable while `abilities.flying` is true; Minecraft's flight physics can leave the flag false even when the player is physically resting on a block. The fix uses a Y-position check as the primary exit condition (`player.getY() ≤ groundY + 0.5`) with a secondary stuck detector (solid non-obstacle block below for 20 consecutive ticks) as a fallback for uneven terrain.
 
 **`FLYING_UP` freezing when descending toward a solid log** — When the target log is directly below the player and still intact, the block stops the player's descent at `log.getY() + 1.0` — one full block above `targetFlyY = log.getY() − 1`. The original tolerance of 0.3 blocks can never be satisfied. A Y-delta stuck detector now tracks whether the player's Y changes each tick; after 20 ticks of no vertical movement (<0.05 blocks/tick) the state transitions to `FACING_LOG`, where the bot re-aims at the log from its current height and resumes breaking.
+
+**Stale reposition counter after toggling** — `repositionAttempts` tracks how many times the bot has walked closer to an unreachable log before giving up. Previously this counter was not reset in `stop()`, so toggling the automation off and back on mid-tree carried the old count into the new run, causing the bot to skip logs after fewer retries than intended. The counter is now explicitly zeroed in `stop()` alongside all other mutable state.
 
 ---
 
@@ -275,7 +279,8 @@ Steps execute sequentially; each step waits for the previous movement or rotatio
 - **Tick-based state machines** — Movement and rotation use internal progress tracking across multiple ticks, avoiding frame-locked delays
 - **Collision-aware climbing** — Detects a solid block 0.6 blocks ahead with clear headspace before jumping; recovers if stuck for 10+ ticks
 - **Hook velocity bite detection** — AutoFish reads the bobber's Y velocity each tick; a threshold of `-0.04` reliably signals a catch without relying on sound or visual events
-- **26-connectivity flood-fill** — Tree log collection uses a 3×3×3 BFS neighborhood rather than 6-connected cardinal directions, correctly capturing diagonal branch structures in acacia and jungle trees
+- **26-connectivity flood-fill** — Tree log collection uses a 3×3×3 BFS neighborhood rather than 6-connected cardinal directions, correctly capturing diagonal branch structures in acacia and jungle trees; a single `LinkedHashSet` serves as both the visited guard and the output collection, removing a redundant parallel `ArrayList`
+- **Squared-distance tree scan** — `findNearestTreeBase` compares horizontal distances entirely in squared space, eliminating up to ~1,000 `Math.sqrt` calls per scan tick at the default radius of 16
 - **3D reach detection** — Out-of-reach logs are identified by true Euclidean distance from the player's eye (not just horizontal distance), so diagonal logs at height are correctly flagged for flight correction
 - **Column-based cut order** — Logs are sorted by (X, Z) column then Y, ensuring each trunk or branch is felled root-to-tip before the bot moves on — mirroring natural chopping behaviour
 - **Bidirectional vertical flight** — A single `FLYING_UP` state handles both ascent and descent by comparing target height to current position; pitch is set toward the direction of travel so the crosshair clears obstacles in the path; a Y-delta stuck detector prevents freezing when descending toward a log that blocks movement
