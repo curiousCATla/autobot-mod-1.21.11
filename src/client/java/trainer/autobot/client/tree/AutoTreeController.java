@@ -10,6 +10,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 import trainer.autobot.client.movement.MouseAction;
 import trainer.autobot.client.movement.MovementController;
 import trainer.autobot.client.movement.MovementDirection;
@@ -39,9 +40,8 @@ public final class AutoTreeController {
 	private static int groundY = 0;
 	private static boolean wasFlying = false;
 	private static double targetFlyY = 0;
-	private static boolean repositioningMoving = false;
+	private static boolean movingPhaseStarted = false;
 	private static int repositionAttempts = 0;
-	private static boolean flyingToLogMoving = false;
 	private static int flyingDownTicks = 0;
 	private static double lastFlyingUpY = 0;
 	private static int flyingUpStuckTicks = 0;
@@ -127,6 +127,8 @@ public final class AutoTreeController {
 		wasFlying = false;
 		flyingDownTicks = 0;
 		flyingUpStuckTicks = 0;
+		repositionAttempts = 0;
+		movingPhaseStarted = false;
 		state = State.IDLE;
 		stateEntered = false;
 	}
@@ -169,17 +171,9 @@ public final class AutoTreeController {
 				flyingDownTicks = 0;
 				client.options.keyShift.setDown(true);
 			}
-			case FLYING_TO_LOG -> {
-				flyingToLogMoving = false;
-				BlockPos targetLog = targetLogs.get(currentLogIndex);
-				RotationController.startFacingDirection(client, yawToBlock(player, targetLog));
-				RotationController.startFacingPitch(client, 0.0f);
-			}
-			case REPOSITIONING -> {
-				repositioningMoving = false;
-				BlockPos targetLog = targetLogs.get(currentLogIndex);
-				RotationController.startFacingDirection(client, yawToBlock(player, targetLog));
-				RotationController.startFacingPitch(client, 0.0f);
+			case FLYING_TO_LOG, REPOSITIONING -> {
+				movingPhaseStarted = false;
+				faceBlockHorizontally(client, player, targetLogs.get(currentLogIndex));
 			}
 			default -> {
 			} // SEARCHING and BREAKING_LOG have no enter setup
@@ -366,18 +360,17 @@ public final class AutoTreeController {
 	private static void tickFlyingToLog(Minecraft client, LocalPlayer player) {
 		BlockPos targetLog = targetLogs.get(currentLogIndex);
 
-		if (!flyingToLogMoving) {
+		if (!movingPhaseStarted) {
 			// Phase 1: rotate to face the log horizontally, then start flying forward
 			if (!RotationController.isBusy()) {
-				flyingToLogMoving = true;
+				movingPhaseStarted = true;
 				client.options.keyUp.setDown(true);
 			}
 			return;
 		}
 
 		// Phase 2: fly forward; re-aim each tick to stay on course and break anything in the path
-		RotationController.startFacingDirection(client, yawToBlock(player, targetLog));
-		RotationController.startFacingPitch(client, 0.0f);
+		faceBlockHorizontally(client, player, targetLog);
 
 		if (client.hitResult != null && client.hitResult.getType() == HitResult.Type.BLOCK) {
 			BlockHitResult blockHit = (BlockHitResult) client.hitResult;
@@ -415,9 +408,9 @@ public final class AutoTreeController {
 	}
 
 	private static void tickRepositioning(Minecraft client, LocalPlayer player) {
-		if (!repositioningMoving) {
+		if (!movingPhaseStarted) {
 			if (!RotationController.isBusy()) {
-				repositioningMoving = true;
+				movingPhaseStarted = true;
 				MovementController.movePlayer(client, MovementDirection.UP, REPOSITION_WALK_DISTANCE, MouseAction.NONE);
 			}
 		} else {
@@ -427,22 +420,33 @@ public final class AutoTreeController {
 		}
 	}
 
+	private static void faceBlockHorizontally(Minecraft client, LocalPlayer player, BlockPos target) {
+		RotationController.startFacingDirection(client, yawToBlock(player, target));
+		RotationController.startFacingPitch(client, 0.0f);
+	}
+
+	private static Vec3 blockCenter(BlockPos pos) {
+		return new Vec3(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
+	}
+
 	private static double dist3DToBlock(LocalPlayer player, BlockPos target) {
-		double dx = (target.getX() + 0.5) - player.getX();
-		double dy = (target.getY() + 0.5) - player.getEyeY();
-		double dz = (target.getZ() + 0.5) - player.getZ();
+		Vec3 center = blockCenter(target);
+		double dx = center.x - player.getX();
+		double dy = center.y - player.getEyeY();
+		double dz = center.z - player.getZ();
 		return Math.sqrt(dx * dx + dy * dy + dz * dz);
 	}
 
 	private static BlockPos findNearestTreeBase(LocalPlayer player, Level level) {
 		BlockPos playerPos = player.blockPosition();
 		BlockPos nearest = null;
-		double minHorizDist = Double.MAX_VALUE;
+		double minHorizDistSq = Double.MAX_VALUE;
+		double searchRadiusSq = (double) searchRadius * searchRadius;
 
 		for (int dx = -searchRadius; dx <= searchRadius; dx++) {
 			for (int dz = -searchRadius; dz <= searchRadius; dz++) {
-				double horizDist = Math.sqrt((double) (dx * dx + dz * dz));
-				if (horizDist > searchRadius) continue;
+				double horizDistSq = (double) (dx * dx + dz * dz);
+				if (horizDistSq > searchRadiusSq) continue;
 
 				// Scan upward in this column to find the lowest log
 				for (int dy = -2; dy <= searchRadius; dy++) {
@@ -450,8 +454,8 @@ public final class AutoTreeController {
 					if (isLogBlock(level.getBlockState(pos))) {
 						// Confirm it is a base log (no log directly below)
 						if (!isLogBlock(level.getBlockState(pos.below()))) {
-							if (horizDist < minHorizDist) {
-								minHorizDist = horizDist;
+							if (horizDistSq < minHorizDistSq) {
+								minHorizDistSq = horizDistSq;
 								nearest = pos;
 							}
 						}
@@ -465,16 +469,14 @@ public final class AutoTreeController {
 	}
 
 	private static List<BlockPos> findConnectedLogs(Level level, BlockPos start) {
-		List<BlockPos> allLogs = new ArrayList<>();
+		Set<BlockPos> allLogs = new LinkedHashSet<>();
 		Queue<BlockPos> queue = new LinkedList<>();
-		Set<BlockPos> visited = new HashSet<>();
 
 		queue.add(start);
-		visited.add(start);
+		allLogs.add(start);
 
 		while (!queue.isEmpty()) {
 			BlockPos current = queue.poll();
-			allLogs.add(current);
 
 			// Check all 26 neighbors in the 3×3×3 cube (1-block radius, diagonal included)
 			for (int ddx = -1; ddx <= 1; ddx++) {
@@ -482,8 +484,8 @@ public final class AutoTreeController {
 					for (int ddz = -1; ddz <= 1; ddz++) {
 						if (ddx == 0 && ddy == 0 && ddz == 0) continue;
 						BlockPos neighbor = current.offset(ddx, ddy, ddz);
-						if (!visited.contains(neighbor) && isLogBlock(level.getBlockState(neighbor))) {
-							visited.add(neighbor);
+						if (!allLogs.contains(neighbor) && isLogBlock(level.getBlockState(neighbor))) {
+							allLogs.add(neighbor);
 							queue.add(neighbor);
 						}
 					}
@@ -527,16 +529,18 @@ public final class AutoTreeController {
 
 	// Compute Minecraft yaw to face a block center (South=0, West=90, North=180, East=-90)
 	private static float yawToBlock(LocalPlayer player, BlockPos target) {
-		double dx = (target.getX() + 0.5) - player.getX();
-		double dz = (target.getZ() + 0.5) - player.getZ();
+		Vec3 center = blockCenter(target);
+		double dx = center.x - player.getX();
+		double dz = center.z - player.getZ();
 		return (float) Math.toDegrees(Math.atan2(-dx, dz));
 	}
 
 	// Compute Minecraft pitch to face a block center (0=horizontal, -90=up, +90=down)
 	private static float pitchToBlock(LocalPlayer player, BlockPos target) {
-		double dx = (target.getX() + 0.5) - player.getX();
-		double dy = (target.getY() + 0.5) - player.getEyeY();
-		double dz = (target.getZ() + 0.5) - player.getZ();
+		Vec3 center = blockCenter(target);
+		double dx = center.x - player.getX();
+		double dy = center.y - player.getEyeY();
+		double dz = center.z - player.getZ();
 		double horizDist = Math.sqrt(dx * dx + dz * dz);
 		if (horizDist < 1.0E-6) {
 			return dy > 0 ? -90.0f : 90.0f;
@@ -545,8 +549,9 @@ public final class AutoTreeController {
 	}
 
 	private static double horizontalDistToBlock(LocalPlayer player, BlockPos target) {
-		double dx = (target.getX() + 0.5) - player.getX();
-		double dz = (target.getZ() + 0.5) - player.getZ();
+		Vec3 center = blockCenter(target);
+		double dx = center.x - player.getX();
+		double dz = center.z - player.getZ();
 		return Math.sqrt(dx * dx + dz * dz);
 	}
 
